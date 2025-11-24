@@ -3,9 +3,10 @@ import { DataFrame } from '../types';
 
 interface WebViewProps {
   data: DataFrame;
+  onVectorClick?: (id: string) => void;
 }
 
-const WebView: React.FC<WebViewProps> = ({ data }) => {
+const WebView: React.FC<WebViewProps> = ({ data, onVectorClick }) => {
   // Helper to convert Arrow Columns to Row Objects (Simulating DOM rendering from data)
   const rows = Array.from({ length: data.rowCount }, (_, rowIndex) => {
     const row: Record<string, any> = {};
@@ -42,13 +43,18 @@ const WebView: React.FC<WebViewProps> = ({ data }) => {
                     </a>
                     <span className="text-[10px] text-gray-500">({item.category === 'Lang' ? 'rust-lang.org' : item.category === 'DB' ? 'lancedb.com' : 'ycombinator.com'})</span>
                     </div>
-                    <div className="text-[10px] text-gray-500 mt-0.5">
-                    {item.points} points by user_{item.id} 2 hours ago | hide | 12 comments
-                    {item.is_vectorized && (
-                        <span className="ml-2 text-[9px] text-rust-600 bg-rust-500/10 px-1 rounded border border-rust-500/20" title="Content embedded in local vector store">
-                        ✦ Vectorized
-                        </span>
-                    )}
+                    <div className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-2">
+                        <span>{item.points} points by user_{item.id} 2 hours ago | hide | 12 comments</span>
+                        {item.is_vectorized && (
+                            <button 
+                                onClick={() => onVectorClick && onVectorClick(item.id.toString())}
+                                className="inline-flex items-center gap-1 text-[9px] text-rust-600 bg-rust-500/10 px-1.5 rounded border border-rust-500/20 hover:bg-rust-500/20 hover:border-rust-500/40 transition-colors cursor-pointer" 
+                                title="Click to view in Vector Space"
+                            >
+                                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                                Vectorized
+                            </button>
+                        )}
                     </div>
                 </div>
                 </li>
@@ -84,9 +90,12 @@ const WebView: React.FC<WebViewProps> = ({ data }) => {
                                 <p className="text-gray-400 text-sm mt-1">{item.description}</p>
                                 <div className="mt-3 flex gap-2">
                                      {item.is_vectorized && (
-                                        <span className="text-[10px] bg-green-900/40 text-green-400 px-1.5 py-0.5 rounded border border-green-900">
-                                        Verified
-                                        </span>
+                                        <button 
+                                            onClick={() => onVectorClick && onVectorClick(item.crate_name)}
+                                            className="text-[10px] bg-green-900/40 text-green-400 px-1.5 py-0.5 rounded border border-green-900 hover:bg-green-900/60 transition-colors cursor-pointer"
+                                        >
+                                            Verified Index
+                                        </button>
                                     )}
                                      <span className="text-[10px] bg-blue-900/40 text-blue-400 px-1.5 py-0.5 rounded border border-blue-900">
                                         MIT

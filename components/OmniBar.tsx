@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ViewMode } from '../types';
 
 interface OmniBarProps {
@@ -11,6 +11,17 @@ interface OmniBarProps {
 
 const OmniBar: React.FC<OmniBarProps> = ({ url, viewMode, onUrlChange, onViewModeChange, onAskAI }) => {
   const [inputVal, setInputVal] = useState(url);
+
+  // Sync local input with parent url changes (e.g. tab switching)
+  useEffect(() => {
+    setInputVal(url);
+  }, [url]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVal = e.target.value;
+    setInputVal(newVal);
+    onUrlChange(newVal); // Propagate immediately for instant search in Memory View
+  };
 
   // Icon Components (SVG)
   const GlobeIcon = () => (
@@ -41,12 +52,13 @@ const OmniBar: React.FC<OmniBarProps> = ({ url, viewMode, onUrlChange, onViewMod
       {/* URL / Command Input */}
       <div className="flex-1 relative group">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          {url.includes('https') ? <span className="text-green-500 text-xs">🔒</span> : <span className="text-slate-500">🌐</span>}
+          {inputVal.includes('.') && !inputVal.includes(' ') ? <span className="text-green-500 text-xs">🔒</span> : <span className="text-arrow-400 text-xs">🔍</span>}
         </div>
         <input 
           type="text"
           value={inputVal}
-          onChange={(e) => setInputVal(e.target.value)}
+          onChange={handleChange}
+          placeholder="Enter URL or Search Semantic Memory..."
           className="w-full bg-black/30 text-sm text-slate-200 border border-cortex-border rounded-lg pl-9 pr-24 py-1.5 focus:outline-none focus:border-arrow-400 focus:ring-1 focus:ring-arrow-400 font-mono transition-all"
         />
         {/* Context Stats */}

@@ -1,13 +1,22 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import * as d3 from 'd3';
 import { DataFrame } from '../types';
 
 interface DataViewProps {
   data: DataFrame;
+  isChartVisible?: boolean;
 }
 
-const DataView: React.FC<DataViewProps> = ({ data }) => {
+const DataView: React.FC<DataViewProps> = ({ data, isChartVisible = false }) => {
   const [filterQuery, setFilterQuery] = useState('');
   const [showCode, setShowCode] = useState(true);
+  const [showChart, setShowChart] = useState(isChartVisible);
+  const chartRef = useRef<SVGSVGElement>(null);
+
+  // Sync internal state with prop if it changes
+  useEffect(() => {
+    if (isChartVisible) setShowChart(true);
+  }, [isChartVisible]);
 
   // Transpose the column-oriented Arrow data to row-oriented for React rendering
   const allRows = useMemo(() => {
@@ -25,29 +34,103 @@ const DataView: React.FC<DataViewProps> = ({ data }) => {
     if (!filterQuery) return allRows;
     const lowerQuery = filterQuery.toLowerCase();
     return allRows.filter(row => {
-      // Very basic simulation of full-text search or column filtering
       return Object.values(row).some(val => 
         String(val).toLowerCase().includes(lowerQuery)
       );
     });
   }, [allRows, filterQuery]);
 
+  // Identify columns for visualization
+  const numericCol = data.columns.find(c => c.type === 'UInt64');
+  const labelCol = data.columns.find(c => c.type === 'Utf8' && (c.name === 'title' || c.name === 'crate_name'));
+
+  // --- D3 Visualization Logic ---
+  useEffect(() => {
+    if (!showChart || !chartRef.current || !numericCol || !labelCol) return;
+
+    const svg = d3.select(chartRef.current);
+    const width = chartRef.current.clientWidth;
+    const height = 150; // Fixed height for the chart panel
+
+    svg.attr("width", width).attr("height", height);
+    svg.selectAll("*").remove(); // Clear previous
+
+    const margin = { top: 20, right: 20, bottom: 20, left: 40 };
+    const chartWidth = width - margin.left - margin.right;
+    const chartHeight = height - margin.top - margin.bottom;
+
+    // Prepare data
+    const chartData = numericCol.data.map((val, i) => ({
+      value: Number(val),
+      label: String(labelCol.data[i])
+    })).slice(0, 20); // Limit to top 20 for visibility
+
+    const x = d3.scaleBand()
+      .range([0, chartWidth])
+      .domain(chartData.map((d, i) => i.toString()))
+      .padding(0.2);
+
+    const y = d3.scaleLinear()
+      .range([chartHeight, 0])
+      .domain([0, d3.max(chartData, d => d.value) || 100]);
+
+    const g = svg.append("g")
+      .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    // Bars
+    g.selectAll(".bar")
+      .data(chartData)
+      .join("rect")
+      .attr("class", "bar")
+      .attr("x", (d, i) => x(i.toString()) || 0)
+      .attr("width", x.bandwidth())
+      .attr("y", d => y(d.value))
+      .attr("height", d => chartHeight - y(d.value))
+      .attr("fill", "#39C1F3") // Arrow Blue
+      .attr("opacity", 0.8);
+
+    // X Axis
+    g.append("g")
+      .attr("transform", `translate(0,${chartHeight})`)
+      .call(d3.axisBottom(x).tickFormat(() => "").tickSize(0))
+      .select(".domain").attr("stroke", "#2A2E37");
+
+    // Y Axis
+    g.append("g")
+      .call(d3.axisLeft(y).ticks(3).tickSize(-chartWidth))
+      .select(".domain").remove();
+    
+    g.selectAll(".tick line")
+      .attr("stroke", "#2A2E37")
+      .attr("stroke-dasharray", "2,2");
+    
+    g.selectAll(".tick text")
+      .attr("fill", "#64748b")
+      .attr("font-family", "JetBrains Mono")
+      .attr("font-size", "9px");
+
+  }, [showChart, numericCol, labelCol, allRows, data]); // Re-run when data changes (Live Mode)
+
+
   // Generate fake Polars code based on current state
   const generatedCode = useMemo(() => {
     const tableName = data.columns.some(c => c.name === 'crate_name') ? 'crates_df' : 'hn_df';
-    if (!filterQuery) {
-        return `// Rust / Polars Lazy Execution Plan
-let df = ${tableName}.lazy();
-let result = df.collect()?;`;
+    let code = `// Rust / Polars Lazy Execution Plan\nlet df = ${tableName}.lazy();`;
+    
+    if (filterQuery) {
+        code += `\nlet q = df.filter(\n    col("*").map(|s| s.to_string().contains("(?i)${filterQuery}"))\n);`;
+    } else {
+        code += `\nlet q = df;`;
     }
-    return `// Rust / Polars Lazy Execution Plan
-let q = ${tableName}.lazy()
-    .filter(
-        col("*").map(|s| s.to_string().contains("(?i)${filterQuery}"))
-    );
 
-let result = q.collect()?;`;
-  }, [filterQuery, data]);
+    if (showChart) {
+        code += `\n// Plotting pipeline\nlet chart = Chart::new(ChartType::Bar)\n    .x("${labelCol?.name || 'label'}")\n    .y("${numericCol?.name || 'value'}")\n    .render(&q.collect()?);`;
+    } else {
+        code += `\nlet result = q.collect()?;`;
+    }
+    
+    return code;
+  }, [filterQuery, data, showChart, labelCol, numericCol]);
 
   return (
     <div className="w-full h-full flex flex-col bg-cortex-bg overflow-hidden animate-in fade-in duration-300">
@@ -65,13 +148,17 @@ let result = q.collect()?;`;
           </div>
           <div className="flex gap-2">
             <button 
+                onClick={() => setShowChart(!showChart)}
+                className={`text-xs px-3 py-1 rounded border font-mono transition-colors flex items-center gap-2 ${showChart ? 'bg-arrow-400/20 text-arrow-400 border-arrow-400/50' : 'bg-slate-800 text-slate-300 border-slate-700'}`}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+              {showChart ? 'Hide Viz' : 'Visualize'}
+            </button>
+            <button 
                 onClick={() => setShowCode(!showCode)}
                 className={`text-xs px-3 py-1 rounded border font-mono transition-colors ${showCode ? 'bg-rust-500/20 text-rust-500 border-rust-500/50' : 'bg-slate-800 text-slate-300 border-slate-700'}`}
             >
               {showCode ? 'Hide Engine' : 'Show Engine'}
-            </button>
-            <button className="text-xs bg-slate-800 text-slate-300 px-3 py-1 rounded border border-slate-700 hover:border-arrow-400 font-mono transition-colors">
-              Export Parquet
             </button>
           </div>
         </div>
@@ -97,9 +184,19 @@ let result = q.collect()?;`;
             </div>
         </div>
       </div>
+
+      {/* Visualization Panel */}
+      {showChart && numericCol && (
+        <div className="h-[160px] bg-[#0F1115] border-b border-cortex-border relative flex-shrink-0">
+             <div className="absolute top-2 left-4 text-[10px] text-slate-500 font-mono z-10">
+                VISUALIZATION: {numericCol.name.toUpperCase()} DISTRIBUTION
+             </div>
+             <svg ref={chartRef} className="w-full h-full block"></svg>
+        </div>
+      )}
       
       {/* Table Area */}
-      <div className="flex-1 overflow-auto relative">
+      <div className="flex-1 overflow-auto relative bg-cortex-bg">
         <table className="w-full text-left border-collapse">
           <thead className="bg-cortex-panel sticky top-0 z-10 shadow-sm">
             <tr>
@@ -144,14 +241,14 @@ let result = q.collect()?;`;
 
       {/* Query Inspector (Simulating the Engine) */}
       {showCode && (
-        <div className="bg-[#0A0C10] border-t border-cortex-border p-0 animate-in slide-in-from-bottom duration-300 h-32 flex flex-col">
+        <div className="bg-[#0A0C10] border-t border-cortex-border p-0 animate-in slide-in-from-bottom duration-300 h-32 flex flex-col flex-shrink-0">
             <div className="bg-[#1e1e1e] px-2 py-1 text-[10px] text-slate-500 font-mono border-b border-white/10 flex justify-between">
                 <span>GENERATED_PLAN.rs</span>
                 <span>TARGET: WASM</span>
             </div>
             <div className="flex-1 p-3 overflow-auto font-mono text-xs text-slate-300">
                 <pre>
-                    <code dangerouslySetInnerHTML={{__html: generatedCode.replace(/let/g, '<span class="text-rust-500">let</span>').replace(/lazy/g, '<span class="text-arrow-400">lazy</span>').replace(/filter/g, '<span class="text-arrow-400">filter</span>').replace(/collect/g, '<span class="text-arrow-400">collect</span>')}}></code>
+                    <code dangerouslySetInnerHTML={{__html: generatedCode.replace(/let/g, '<span class="text-rust-500">let</span>').replace(/lazy/g, '<span class="text-arrow-400">lazy</span>').replace(/filter/g, '<span class="text-arrow-400">filter</span>').replace(/collect/g, '<span class="text-arrow-400">collect</span>').replace(/Chart/g, '<span class="text-blue-400">Chart</span>')}}></code>
                 </pre>
             </div>
         </div>

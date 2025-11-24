@@ -6,9 +6,10 @@ interface AiSidebarProps {
   isOpen: boolean;
   onClose: () => void;
   contextData: DataFrame;
+  onAction?: (action: string) => void;
 }
 
-const AiSidebar: React.FC<AiSidebarProps> = ({ isOpen, onClose, contextData }) => {
+const AiSidebar: React.FC<AiSidebarProps> = ({ isOpen, onClose, contextData, onAction }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -22,32 +23,47 @@ const AiSidebar: React.FC<AiSidebarProps> = ({ isOpen, onClose, contextData }) =
         {
           id: 'init',
           role: 'model',
-          text: `Cortex Engine Online. I have direct memory access to the current tab's 12 rows of data. 
+          text: `Cortex Engine Online. I have direct memory access to the current tab's ${contextData.rowCount} rows of data. 
           
           I can filter, aggregate, or visualize this Arrow DataFrame. What would you like to know?`,
           timestamp: Date.now()
         }
       ]);
     }
-  }, [isOpen]);
+  }, [isOpen, contextData]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
+  const handleSend = async (textInput: string = input) => {
+    if (!textInput.trim()) return;
 
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
-      text: input,
+      text: textInput,
       timestamp: Date.now()
     };
 
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsLoading(true);
+
+    // Simulate Command Execution for Demo
+    if (textInput.toLowerCase().includes('visualize') || textInput.toLowerCase().includes('chart')) {
+        setTimeout(() => {
+            setIsLoading(false);
+            setMessages(prev => [...prev, {
+                id: Date.now().toString(),
+                role: 'model',
+                text: "I've generated a visualization of the numeric distributions for this dataset. Switching to Analysis Mode.",
+                timestamp: Date.now()
+            }]);
+            if (onAction) onAction('VISUALIZE');
+        }, 800);
+        return;
+    }
 
     try {
         // Convert dataframe to string representation for the LLM
@@ -133,6 +149,29 @@ const AiSidebar: React.FC<AiSidebarProps> = ({ isOpen, onClose, contextData }) =
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Quick Actions */}
+      <div className="px-4 pb-2 flex gap-2 overflow-x-auto">
+        <button 
+            onClick={() => handleSend("Visualize the numeric data points")}
+            className="whitespace-nowrap bg-slate-800 hover:bg-slate-700 text-arrow-400 border border-arrow-400/30 text-[10px] px-2 py-1 rounded-full transition-colors flex items-center gap-1"
+        >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+            Visualize Data
+        </button>
+        <button 
+            onClick={() => handleSend("Find the top 3 items by ranking")}
+            className="whitespace-nowrap bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[10px] px-2 py-1 rounded-full transition-colors"
+        >
+            Top Items
+        </button>
+        <button 
+            onClick={() => handleSend("Identify any anomalies in the dataset")}
+            className="whitespace-nowrap bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[10px] px-2 py-1 rounded-full transition-colors"
+        >
+            Find Anomalies
+        </button>
+      </div>
+
       {/* Input */}
       <div className="p-4 border-t border-cortex-border bg-cortex-panel">
         {apiKeyMissing ? (
@@ -155,7 +194,7 @@ const AiSidebar: React.FC<AiSidebarProps> = ({ isOpen, onClose, contextData }) =
                 className="flex-1 bg-black text-slate-200 border border-cortex-border rounded p-2 text-xs font-mono focus:border-rust-500 outline-none placeholder:text-slate-600"
                 />
                 <button 
-                    onClick={handleSend}
+                    onClick={() => handleSend()}
                     className="bg-rust-600 hover:bg-rust-500 text-white px-3 rounded transition-colors"
                 >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
