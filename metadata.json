@@ -1,0 +1,5 @@
+{
+  "name": "Cortex Browser",
+  "description": "A conceptual UI for a Rust+Arrow based AI Browser. Features a Data View mode that transforms DOM to DataFrames and a Vector Memory visualization.",
+  "requestFramePermissions": []
+}
