@@ -148,7 +148,7 @@ const MemorySpace: React.FC<MemorySpaceProps> = ({ data, searchQuery = '' }) => 
     return () => {
       simulation.stop();
     };
-  }, [data, searchQuery]);
+  }, [data, searchQuery]); // Re-run whenever data (nodes/links) changes
 
   return (
     <div className="w-full h-full flex flex-col bg-cortex-bg relative overflow-hidden animate-in zoom-in-95 duration-500">
@@ -163,7 +163,7 @@ const MemorySpace: React.FC<MemorySpaceProps> = ({ data, searchQuery = '' }) => 
             LANCEDB LOCAL INDEX
           </h2>
           <p className="text-slate-500 text-xs mt-0.5 font-mono">
-            {searchQuery && !searchQuery.startsWith('http') ? `Filtering: "${searchQuery}"` : "Vector Space • 384 Dimensions"}
+            {searchQuery && !searchQuery.startsWith('http') ? `Filtering: "${searchQuery}"` : `Vector Space • ${data.nodes.length} Nodes`}
           </p>
       </div>
 

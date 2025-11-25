@@ -86,6 +86,49 @@ export const MOCK_CRATES_DATAFRAME: DataFrame = {
   ]
 };
 
+// Helper to generate a mock DataFrame for a generic article
+export const generateArticleDataFrame = (id: string, title: string): DataFrame => {
+  const paragraphCount = Math.floor(Math.random() * 5) + 3;
+  
+  const paragraphs = [
+    "Rust's ownership model guarantees memory safety without garbage collection.",
+    "Apache Arrow defines a language-independent columnar memory format for flat and hierarchical data.",
+    "By using zero-copy reads, we can significantly reduce the latency of data access in the browser.",
+    "Vector embeddings allow for semantic search, capturing the 'meaning' rather than just keywords.",
+    "WebAssembly (WASM) enables high-performance applications to run in web pages.",
+    "SIMD (Single Instruction, Multiple Data) instructions can accelerate vector operations.",
+    "Tauri provides a smaller, faster, and more secure alternative to Electron for building desktop apps."
+  ];
+
+  const entities = ["Rust", "Memory", "CPU", "GPU", "Latency", "Throughput", "AI", "LLM"];
+
+  return {
+    rowCount: paragraphCount,
+    columns: [
+      {
+        name: "block_id",
+        type: "UInt64",
+        data: Array.from({ length: paragraphCount }, (_, i) => i + 1)
+      },
+      {
+        name: "content",
+        type: "Utf8",
+        data: Array.from({ length: paragraphCount }, () => paragraphs[Math.floor(Math.random() * paragraphs.length)])
+      },
+      {
+        name: "relevance_score",
+        type: "Float32",
+        data: Array.from({ length: paragraphCount }, () => parseFloat(Math.random().toFixed(2)))
+      },
+      {
+        name: "top_entity",
+        type: "Utf8",
+        data: Array.from({ length: paragraphCount }, () => entities[Math.floor(Math.random() * entities.length)])
+      }
+    ]
+  };
+};
+
 // Mocking the Memory/Vector Space
 export const MOCK_VECTOR_GRAPH: VectorGraphData = {
   nodes: [
