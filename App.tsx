@@ -6,10 +6,12 @@ import MemorySpace from './components/MemorySpace';
 import AiSidebar from './components/AiSidebar';
 import CommandPalette from './components/CommandPalette';
 import Toast, { ToastMessage } from './components/Toast';
+import BootScreen from './components/BootScreen';
 import { ViewMode, Tab, DataFrame, VectorGraphData } from './types';
 import { MOCK_HN_DATAFRAME, MOCK_CRATES_DATAFRAME, MOCK_VECTOR_GRAPH, INITIAL_URL, generateArticleDataFrame } from './constants';
 
 const App: React.FC = () => {
+  const [isBooting, setIsBooting] = useState(true);
   const [url, setUrl] = useState(INITIAL_URL);
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.WEB);
   const [isAiOpen, setIsAiOpen] = useState(false);
@@ -286,7 +288,7 @@ const App: React.FC = () => {
       }
   };
 
-  const handleCommandExecute = (commandId: string) => {
+  const handleCommandExecute = (commandId: string, payload?: any) => {
     switch (commandId) {
         case 'nav-hn':
             setActiveTabId('1');
@@ -304,6 +306,19 @@ const App: React.FC = () => {
             break;
         case 'view-mem':
             setViewMode(ViewMode.MEMORY);
+            break;
+        case 'mem-jump':
+            if (payload) {
+                // Focus on vector view with this node ID
+                setViewMode(ViewMode.MEMORY);
+                // In a real app, we'd center the graph. 
+                // Here we update URL to simulate "Selection" which MemorySpace picks up via props
+                const node = vectorData.nodes.find(n => n.id === payload);
+                if (node) {
+                    setUrl(node.title); // Hacky way to filter MemorySpace for demo
+                    showToast(`Spotlight: Jumped to memory node "${node.title}"`, 'success');
+                }
+            }
             break;
         case 'sys-export-pq':
             showToast('Exported 12 rows to data.parquet', 'success');
@@ -354,8 +369,14 @@ const App: React.FC = () => {
     }
   };
 
+  // --- BOOT SCREEN INTERCEPT ---
+  if (isBooting) {
+      return <BootScreen onComplete={() => setIsBooting(false)} />;
+  }
+  // -----------------------------
+
   return (
-    <div className="flex flex-col h-screen bg-cortex-bg text-slate-200 overflow-hidden font-sans selection:bg-rust-500/30 selection:text-rust-500 relative">
+    <div className="flex flex-col h-screen bg-cortex-bg text-slate-200 overflow-hidden font-sans selection:bg-rust-500/30 selection:text-rust-500 relative animate-in fade-in duration-1000">
       
       {/* Tab Bar (Dynamic) */}
       <div className="flex bg-cortex-bg pt-2 px-2 gap-1 overflow-x-auto border-b border-cortex-border items-center no-scrollbar">
@@ -435,11 +456,12 @@ const App: React.FC = () => {
         onAction={handleAiAction}
       />
 
-      {/* Command Palette Overlay */}
+      {/* Command Palette Overlay (Spotlight) */}
       <CommandPalette 
         isOpen={isCmdPaletteOpen} 
         onClose={() => setIsCmdPaletteOpen(false)} 
         onExecute={handleCommandExecute}
+        vectorData={vectorData}
       />
 
       {/* Toast Notifications */}

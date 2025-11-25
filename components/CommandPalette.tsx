@@ -1,19 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { VectorGraphData, VectorNode } from '../types';
 
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
-  onExecute: (commandId: string) => void;
+  onExecute: (commandId: string, payload?: any) => void;
+  vectorData?: VectorGraphData;
 }
 
 interface Command {
   id: string;
   label: string;
-  category: 'NAVIGATION' | 'VIEW' | 'SYSTEM';
+  category: 'NAVIGATION' | 'VIEW' | 'SYSTEM' | 'MEMORY';
   shortcut?: string;
+  payload?: any;
 }
 
-const COMMANDS: Command[] = [
+const STATIC_COMMANDS: Command[] = [
   { id: 'nav-hn', label: 'Switch to Hacker News', category: 'NAVIGATION' },
   { id: 'nav-crates', label: 'Switch to Crates.io', category: 'NAVIGATION' },
   { id: 'view-web', label: 'Mode: Web Render', category: 'VIEW', shortcut: 'V W' },
@@ -26,7 +29,7 @@ const COMMANDS: Command[] = [
   { id: 'sys-toggle-live', label: 'Toggle Live Sync', category: 'SYSTEM' },
 ];
 
-const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onExecute }) => {
+const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onExecute, vectorData }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -39,9 +42,20 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onExec
     }
   }, [isOpen]);
 
-  const filteredCommands = COMMANDS.filter(cmd => 
-    cmd.label.toLowerCase().includes(query.toLowerCase()) || 
-    cmd.category.toLowerCase().includes(query.toLowerCase())
+  // Combine Static Commands with Dynamic Memory Nodes (Cortex Spotlight)
+  const combinedItems: Command[] = [
+      ...STATIC_COMMANDS,
+      ...(vectorData ? vectorData.nodes.map(node => ({
+          id: `mem-${node.id}`,
+          label: `${node.title} (${node.url})`,
+          category: 'MEMORY' as const,
+          payload: node.id
+      })) : [])
+  ];
+
+  const filteredItems = combinedItems.filter(item => 
+    item.label.toLowerCase().includes(query.toLowerCase()) || 
+    item.category.toLowerCase().includes(query.toLowerCase())
   );
 
   // Reset selection when query changes
@@ -52,14 +66,19 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onExec
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex(prev => (prev + 1) % filteredCommands.length);
+      setSelectedIndex(prev => (prev + 1) % filteredItems.length);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setSelectedIndex(prev => (prev - 1 + filteredCommands.length) % filteredCommands.length);
+      setSelectedIndex(prev => (prev - 1 + filteredItems.length) % filteredItems.length);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (filteredCommands[selectedIndex]) {
-        onExecute(filteredCommands[selectedIndex].id);
+      if (filteredItems[selectedIndex]) {
+        const item = filteredItems[selectedIndex];
+        if (item.category === 'MEMORY') {
+            onExecute('mem-jump', item.payload);
+        } else {
+            onExecute(item.id);
+        }
         onClose();
       }
     } else if (e.key === 'Escape') {
@@ -81,7 +100,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onExec
             ref={inputRef}
             type="text" 
             className="bg-transparent border-none outline-none text-slate-200 placeholder-slate-500 flex-1 font-mono text-sm"
-            placeholder="Type a command..."
+            placeholder="Type a command or search memory..."
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -93,38 +112,45 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onExec
           </div>
         </div>
         
-        <div className="max-h-[300px] overflow-y-auto py-2">
-          {filteredCommands.length === 0 ? (
-            <div className="px-4 py-8 text-center text-slate-500 text-xs font-mono">No matching commands found.</div>
+        <div className="max-h-[400px] overflow-y-auto py-2">
+          {filteredItems.length === 0 ? (
+            <div className="px-4 py-8 text-center text-slate-500 text-xs font-mono">No matching results found.</div>
           ) : (
-            filteredCommands.map((cmd, index) => (
+            filteredItems.map((cmd, index) => (
               <button
                 key={cmd.id}
-                onClick={() => { onExecute(cmd.id); onClose(); }}
+                onClick={() => { 
+                    if (cmd.category === 'MEMORY') {
+                        onExecute('mem-jump', cmd.payload);
+                    } else {
+                        onExecute(cmd.id);
+                    }
+                    onClose(); 
+                }}
                 onMouseEnter={() => setSelectedIndex(index)}
                 className={`w-full text-left px-4 py-2.5 flex items-center justify-between group transition-colors ${index === selectedIndex ? 'bg-arrow-400/10' : 'hover:bg-slate-800'}`}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 w-full">
                     <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border min-w-[70px] text-center ${
                         index === selectedIndex 
                         ? 'border-arrow-400/30 bg-arrow-400/20 text-arrow-400' 
                         : 'border-slate-700 bg-slate-800 text-slate-500'
-                    }`}>
+                    } ${cmd.category === 'MEMORY' ? 'text-rust-500 border-rust-500/30 bg-rust-500/10' : ''}`}>
                         {cmd.category}
                     </span>
-                    <span className={`text-sm font-medium ${index === selectedIndex ? 'text-white' : 'text-slate-400'}`}>
+                    <span className={`text-sm font-medium truncate ${index === selectedIndex ? 'text-white' : 'text-slate-400'}`}>
                         {cmd.label}
                     </span>
                 </div>
-                {cmd.shortcut && <span className="text-[10px] font-mono text-slate-600">{cmd.shortcut}</span>}
+                {cmd.shortcut && <span className="text-[10px] font-mono text-slate-600 whitespace-nowrap">{cmd.shortcut}</span>}
               </button>
             ))
           )}
         </div>
         
         <div className="bg-[#0A0C10] px-4 py-2 border-t border-cortex-border flex justify-between items-center text-[10px] text-slate-600 font-mono">
-            <span>Cortex Shell Environment</span>
-            <span>Memory: Safe • Concurrency: 8 Threads</span>
+            <span>Cortex Spotlight</span>
+            <span>Local Index: {vectorData?.nodes.length || 0} Nodes</span>
         </div>
       </div>
     </div>

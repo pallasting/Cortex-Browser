@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { DataFrame } from '../types';
+import InspectorPanel from './InspectorPanel';
 
 interface DataViewProps {
   data: DataFrame;
@@ -11,7 +12,11 @@ const DataView: React.FC<DataViewProps> = ({ data, isChartVisible = false }) => 
   const [filterQuery, setFilterQuery] = useState('');
   const [showCode, setShowCode] = useState(true);
   const [showChart, setShowChart] = useState(isChartVisible);
+  const [selectedRow, setSelectedRow] = useState<Record<string, any> | null>(null);
   const chartRef = useRef<SVGSVGElement>(null);
+
+  // Sorting State
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
 
   // Sync internal state with prop if it changes
   useEffect(() => {
@@ -29,7 +34,7 @@ const DataView: React.FC<DataViewProps> = ({ data, isChartVisible = false }) => 
     });
   }, [data]);
 
-  // Simulate Polars/SQL Filtering
+  // 1. Filter
   const filteredRows = useMemo(() => {
     if (!filterQuery) return allRows;
     const lowerQuery = filterQuery.toLowerCase();
@@ -39,6 +44,47 @@ const DataView: React.FC<DataViewProps> = ({ data, isChartVisible = false }) => 
       );
     });
   }, [allRows, filterQuery]);
+
+  // 2. Sort
+  const sortedRows = useMemo(() => {
+    if (!sortConfig) return filteredRows;
+    
+    return [...filteredRows].sort((a, b) => {
+      const aVal = a[sortConfig.key];
+      const bVal = b[sortConfig.key];
+
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredRows, sortConfig]);
+
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const handleExportCSV = () => {
+      if (sortedRows.length === 0) return;
+      
+      const headers = Object.keys(sortedRows[0]).join(',');
+      const csvRows = sortedRows.map(row => 
+          Object.values(row).map(v => typeof v === 'string' ? `"${v}"` : v).join(',')
+      );
+      
+      const csvContent = [headers, ...csvRows].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", "cortex_export.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+  };
 
   // Identify columns for visualization
   const numericCol = data.columns.find(c => c.type === 'UInt64');
@@ -122,6 +168,10 @@ const DataView: React.FC<DataViewProps> = ({ data, isChartVisible = false }) => 
     } else {
         code += `\nlet q = df;`;
     }
+    
+    if (sortConfig) {
+        code += `\n// Sorting\nlet q = q.sort("${sortConfig.key}", SortOptions { descending: ${sortConfig.direction === 'desc'}, ..Default::default() });`;
+    }
 
     if (showChart) {
         code += `\n// Plotting pipeline\nlet chart = Chart::new(ChartType::Bar)\n    .x("${labelCol?.name || 'label'}")\n    .y("${numericCol?.name || 'value'}")\n    .render(&q.collect()?);`;
@@ -130,10 +180,10 @@ const DataView: React.FC<DataViewProps> = ({ data, isChartVisible = false }) => 
     }
     
     return code;
-  }, [filterQuery, data, showChart, labelCol, numericCol]);
+  }, [filterQuery, data, showChart, labelCol, numericCol, sortConfig]);
 
   return (
-    <div className="w-full h-full flex flex-col bg-cortex-bg overflow-hidden animate-in fade-in duration-300">
+    <div className="w-full h-full flex flex-col bg-cortex-bg overflow-hidden animate-in fade-in duration-300 relative">
       {/* Toolbar / SQL Simulator */}
       <div className="px-4 py-3 border-b border-cortex-border bg-cortex-panel flex flex-col gap-3">
         <div className="flex justify-between items-center">
@@ -147,6 +197,13 @@ const DataView: React.FC<DataViewProps> = ({ data, isChartVisible = false }) => 
             </p>
           </div>
           <div className="flex gap-2">
+            <button 
+                onClick={handleExportCSV}
+                className="text-xs px-3 py-1 rounded border font-mono transition-colors bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white flex items-center gap-2"
+            >
+               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+               Export CSV
+            </button>
             <button 
                 onClick={() => setShowChart(!showChart)}
                 className={`text-xs px-3 py-1 rounded border font-mono transition-colors flex items-center gap-2 ${showChart ? 'bg-arrow-400/20 text-arrow-400 border-arrow-400/50' : 'bg-slate-800 text-slate-300 border-slate-700'}`}
@@ -179,7 +236,7 @@ const DataView: React.FC<DataViewProps> = ({ data, isChartVisible = false }) => 
             />
              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                 <span className="text-[10px] text-slate-500 font-mono">
-                    {filteredRows.length} matches
+                    {sortedRows.length} matches
                 </span>
             </div>
         </div>
@@ -201,9 +258,18 @@ const DataView: React.FC<DataViewProps> = ({ data, isChartVisible = false }) => 
           <thead className="bg-cortex-panel sticky top-0 z-10 shadow-sm">
             <tr>
               {data.columns.map((col) => (
-                <th key={col.name} className="p-2 border-b border-r border-cortex-border text-xs font-mono text-slate-400 uppercase tracking-wider last:border-r-0 bg-cortex-panel">
-                  <div className="flex items-center justify-between group cursor-pointer hover:text-white">
-                    <span>{col.name}</span>
+                <th 
+                    key={col.name} 
+                    onClick={() => handleSort(col.name)}
+                    className="p-2 border-b border-r border-cortex-border text-xs font-mono text-slate-400 uppercase tracking-wider last:border-r-0 bg-cortex-panel cursor-pointer hover:bg-white/5 select-none"
+                >
+                  <div className="flex items-center justify-between group">
+                    <span className="flex items-center gap-1">
+                        {col.name}
+                        {sortConfig?.key === col.name && (
+                            <span className="text-arrow-400">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                        )}
+                    </span>
                     <span className="text-[9px] px-1 bg-slate-800 rounded text-slate-500 group-hover:text-arrow-400">{col.type}</span>
                   </div>
                 </th>
@@ -211,8 +277,12 @@ const DataView: React.FC<DataViewProps> = ({ data, isChartVisible = false }) => 
             </tr>
           </thead>
           <tbody className="divide-y divide-cortex-border bg-cortex-bg">
-            {filteredRows.map((row, i) => (
-              <tr key={i} className="hover:bg-white/5 transition-colors group cursor-default">
+            {sortedRows.map((row, i) => (
+              <tr 
+                key={i} 
+                onClick={() => setSelectedRow(row)}
+                className={`transition-colors group cursor-pointer ${selectedRow === row ? 'bg-arrow-400/10' : 'hover:bg-white/5'}`}
+              >
                 {data.columns.map((col) => (
                   <td key={`${i}-${col.name}`} className="p-2 border-r border-cortex-border text-sm text-slate-300 font-mono whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px] last:border-r-0">
                     {col.name === 'is_vectorized' ? (
@@ -228,7 +298,7 @@ const DataView: React.FC<DataViewProps> = ({ data, isChartVisible = false }) => 
                 ))}
               </tr>
             ))}
-            {filteredRows.length === 0 && (
+            {sortedRows.length === 0 && (
                 <tr>
                     <td colSpan={data.columns.length} className="p-8 text-center text-slate-500 font-mono text-sm">
                         No records match filter criteria.
@@ -248,7 +318,7 @@ const DataView: React.FC<DataViewProps> = ({ data, isChartVisible = false }) => 
             </div>
             <div className="flex-1 p-3 overflow-auto font-mono text-xs text-slate-300">
                 <pre>
-                    <code dangerouslySetInnerHTML={{__html: generatedCode.replace(/let/g, '<span class="text-rust-500">let</span>').replace(/lazy/g, '<span class="text-arrow-400">lazy</span>').replace(/filter/g, '<span class="text-arrow-400">filter</span>').replace(/collect/g, '<span class="text-arrow-400">collect</span>').replace(/Chart/g, '<span class="text-blue-400">Chart</span>')}}></code>
+                    <code dangerouslySetInnerHTML={{__html: generatedCode.replace(/let/g, '<span class="text-rust-500">let</span>').replace(/lazy/g, '<span class="text-arrow-400">lazy</span>').replace(/filter/g, '<span class="text-arrow-400">filter</span>').replace(/collect/g, '<span class="text-arrow-400">collect</span>').replace(/sort/g, '<span class="text-yellow-400">sort</span>').replace(/Chart/g, '<span class="text-blue-400">Chart</span>')}}></code>
                 </pre>
             </div>
         </div>
@@ -260,6 +330,11 @@ const DataView: React.FC<DataViewProps> = ({ data, isChartVisible = false }) => 
         <span>Parse Time: 2ms</span>
         <span>Engine: Polars (Rust)</span>
       </div>
+
+      {/* Inspector Panel Overlay */}
+      {selectedRow && (
+          <InspectorPanel data={selectedRow} onClose={() => setSelectedRow(null)} />
+      )}
     </div>
   );
 };
