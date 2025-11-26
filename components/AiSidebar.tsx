@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatMessage, DataFrame } from '../types';
-import { generatePageInsight } from '../services/geminiService';
+import { generatePageInsight, generateAgentThought } from '../services/geminiService';
 
 interface AiSidebarProps {
   isOpen: boolean;
@@ -50,11 +50,18 @@ const AiSidebar: React.FC<AiSidebarProps> = ({ isOpen, onClose, contextData, onA
     setInput('');
     setIsLoading(true);
 
-    // --- AGENT SIMULATION LOGIC ---
     const lowerInput = textInput.toLowerCase();
     
+    // --- AGENT SIMULATION LOGIC ---
+
     // 1. VISUALIZATION AGENT
     if (lowerInput.includes('visualize') || lowerInput.includes('chart')) {
+        try {
+            // Generate real thought
+            const thought = await generateAgentThought("Generate visualization chart");
+            if(onAction) onAction('AGENT_THOUGHT', thought);
+        } catch (e) { /* ignore */ }
+
         setTimeout(() => {
             setIsLoading(false);
             setMessages(prev => [...prev, {
@@ -70,6 +77,15 @@ const AiSidebar: React.FC<AiSidebarProps> = ({ isOpen, onClose, contextData, onA
 
     // 2. INTERACTION AGENT (The "Act" Phase)
     if (lowerInput.includes('select') || lowerInput.includes('highlight') || lowerInput.includes('upvote') || lowerInput.includes('download') || lowerInput.includes('copy')) {
+        
+        // Trigger generic thought immediately
+        try {
+            const thought = await generateAgentThought(textInput);
+            if(onAction) onAction('AGENT_THOUGHT', thought);
+        } catch (e) {
+             if(onAction) onAction('AGENT_THOUGHT', "Analyzing DOM structure...");
+        }
+
         setTimeout(() => {
             setIsLoading(false);
             
@@ -170,9 +186,12 @@ const AiSidebar: React.FC<AiSidebarProps> = ({ isOpen, onClose, contextData, onA
             name: "Morning Rust Scan",
             steps: [
                 { type: 'NAV', payload: '1', delay: 0 },
-                { type: 'ACTION', action: 'AGENT_HIGHLIGHT', payload: ['1001', '1003'], delay: 800 },
+                { type: 'ACTION', action: 'AGENT_THOUGHT', payload: "Scanning memory for 'Rust' related vectors...", delay: 500 },
+                { type: 'ACTION', action: 'AGENT_HIGHLIGHT', payload: ['1001', '1003'], delay: 1000 },
+                { type: 'ACTION', action: 'AGENT_THOUGHT', payload: "Calculating click targets for upvote action...", delay: 500 },
                 { type: 'ACTION', action: 'AGENT_CLICK', payload: ['1001-vote', '1003-vote'], delay: 1500 },
                 { type: 'NAV', payload: '2', delay: 3000 },
+                { type: 'ACTION', action: 'AGENT_THOUGHT', payload: "Querying index for 'tokio' crate metadata...", delay: 500 },
                 { type: 'ACTION', action: 'AGENT_HIGHLIGHT', payload: ['tokio'], delay: 1000 },
                 { type: 'VIEW', payload: 'DATA', delay: 2000 }
             ]
@@ -186,6 +205,7 @@ const AiSidebar: React.FC<AiSidebarProps> = ({ isOpen, onClose, contextData, onA
                 { type: 'VIEW', payload: 'WEB', delay: 0 },
                 { type: 'ACTION', action: 'AGENT_HIGHLIGHT', payload: ['1002', '1006'], delay: 500 },
                 { type: 'VIEW', payload: 'DATA', delay: 1000 },
+                { type: 'ACTION', action: 'AGENT_THOUGHT', payload: "Compiling column statistics for D3.js render...", delay: 500 },
                 { type: 'ACTION', action: 'VISUALIZE', payload: null, delay: 500 }
             ]
         });

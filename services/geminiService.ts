@@ -4,16 +4,17 @@ import { GoogleGenAI } from "@google/genai";
 // or through the hypothetical "Cortex Cloud" proxy.
 // For this demo, we assume the environment variable is set or prompt the user.
 
-export const generatePageInsight = async (pageContent: string, modelName: string = "gemini-2.5-flash"): Promise<string> => {
+const getAiClient = () => {
   const apiKey = process.env.API_KEY || localStorage.getItem("GEMINI_API_KEY");
-  
   if (!apiKey) {
     throw new Error("API_KEY_MISSING");
   }
+  return new GoogleGenAI({ apiKey });
+};
 
-  const ai = new GoogleGenAI({ apiKey });
-
+export const generatePageInsight = async (pageContent: string, modelName: string = "gemini-2.5-flash"): Promise<string> => {
   try {
+    const ai = getAiClient();
     const response = await ai.models.generateContent({
       model: modelName,
       contents: [
@@ -28,7 +29,7 @@ export const generatePageInsight = async (pageContent: string, modelName: string
         }
       ],
       config: {
-        thinkingConfig: { thinkingBudget: 0 } // Flash model usually doesn't need thinking budget, but good practice to be explicit if switching models
+        thinkingConfig: { thinkingBudget: 0 } 
       }
     });
 
@@ -36,5 +37,33 @@ export const generatePageInsight = async (pageContent: string, modelName: string
   } catch (error) {
     console.error("Gemini Interaction Error:", error);
     throw error;
+  }
+};
+
+export const generateAgentThought = async (userIntent: string): Promise<string> => {
+  try {
+    const ai = getAiClient();
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [
+        {
+          text: `You are the kernel of a cyberpunk AI Browser Agent. The user wants to perform this action: "${userIntent}".
+          
+          Generate a single, short, extremely technical system log line (max 15 words) describing your internal planning process/thought.
+          Use terms like "DOM traversal", "Vector search", "Heuristic matching", "Shadow DOM injection", "Computing gradients".
+          Do not use markdown. Do not use quotes. Just the raw log text.
+          
+          Example: "Traversing DOM tree to identify candidates matching relevance threshold > 0.85..."`
+        }
+      ],
+       config: {
+        thinkingConfig: { thinkingBudget: 0 } 
+      }
+    });
+    
+    return response.text || "Processing neural weights...";
+  } catch (error) {
+    // Fallback if API fails, so the UI doesn't break
+    return "Allocating tensors for action execution...";
   }
 };

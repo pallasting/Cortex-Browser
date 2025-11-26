@@ -1,8 +1,10 @@
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import OmniBar from './components/OmniBar';
 import DataView from './components/DataView';
 import WebView from './components/WebView';
 import MemorySpace from './components/MemorySpace';
+import NeuroVis from './components/NeuroVis';
 import AiSidebar from './components/AiSidebar';
 import CommandPalette from './components/CommandPalette';
 import Toast, { ToastMessage } from './components/Toast';
@@ -359,6 +361,11 @@ const App: React.FC = () => {
         case 'view-mem':
             setViewMode(ViewMode.MEMORY);
             break;
+        case 'view-neuro':
+            setViewMode(ViewMode.NEURO);
+            showToast('Initializing NeuroRust Engine...', 'success');
+            addLog('INFO', 'ENGINE', 'NeuroRust: Allocating neural fabric (SoA) via Arrow...');
+            break;
         case 'mem-jump':
             if (payload) {
                 // Focus on vector view with this node ID
@@ -397,6 +404,11 @@ const App: React.FC = () => {
                 return newState;
             });
             break;
+        case 'eng-thermal':
+            setViewMode(ViewMode.NEURO);
+            showToast('Starting Thermodynamic Annealing Process', 'success');
+            addLog('ACTION', 'ENGINE', 'NeuroRust: Starting Metropolis-Hastings loop. Temp=1.0');
+            break;
         default:
             break;
     }
@@ -423,6 +435,8 @@ const App: React.FC = () => {
       case ViewMode.MEMORY:
         const searchQuery = url.includes('http') || url.includes('www') ? '' : url;
         return <MemorySpace data={vectorData} searchQuery={searchQuery} />;
+      case ViewMode.NEURO:
+        return <NeuroVis />;
       default:
         return null;
     }
