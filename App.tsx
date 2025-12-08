@@ -10,7 +10,7 @@ import CommandPalette from './components/CommandPalette';
 import Toast, { ToastMessage } from './components/Toast';
 import BootScreen from './components/BootScreen';
 import AgentStatusPanel from './components/AgentStatusPanel';
-import { ViewMode, DataFrame } from './types';
+import { ViewMode, Tab, DataFrame, VectorGraphData, SystemLog } from './types';
 import { useCortex } from './hooks/useCortex';
 import { INITIAL_URL, MOCK_HN_DATAFRAME } from './constants';
 
@@ -39,11 +39,15 @@ const App: React.FC = () => {
   }, [state.activeTabId, state.tabs]);
 
   // Boot Sequence Logic
-  useEffect(() => {
-    if (!isBooting) {
-        setTimeout(() => setIsTerminalOpen(false), 2000);
-    }
-  }, [isBooting]);
+  // When boot completes, we will attempt restore
+  const handleBootComplete = async () => {
+      const restored = await actions.restoreState();
+      if (restored) {
+          showToast('Kernel State Restored', 'success');
+      }
+      setIsBooting(false);
+      setTimeout(() => setIsTerminalOpen(false), 2000);
+  };
 
   const showToast = useCallback((message: string, type: 'success' | 'info' | 'error' = 'info') => {
     setToast({ id: Date.now().toString(), message, type });
@@ -90,6 +94,16 @@ const App: React.FC = () => {
           actions.logAgent('INFO', 'AGENT', `[THOUGHT] ${payload}`);
           return;
       }
+      
+      // PHYSICS AGENT
+      if (action === 'PHYSICS_UPDATE') {
+          actions.updateNeuroConfig(payload);
+          actions.setViewMode(ViewMode.NEURO);
+          showToast('Agent: NeuroRust Parameters Updated', 'success');
+          actions.logAgent('ACTION', 'AGENT', `Applied Physics Patch: ${JSON.stringify(payload)}`);
+          return;
+      }
+
       if (action === 'VISUALIZE') {
           actions.setViewMode(ViewMode.DATA);
           setIsChartOpen(true);
@@ -195,7 +209,7 @@ const App: React.FC = () => {
     }
   };
 
-  if (isBooting) return <BootScreen onComplete={() => setIsBooting(false)} />;
+  if (isBooting) return <BootScreen onComplete={handleBootComplete} />;
 
   return (
     <div className="flex flex-col h-screen bg-cortex-bg text-slate-200 overflow-hidden font-sans selection:bg-rust-500/30 selection:text-rust-500 relative animate-in fade-in duration-1000">

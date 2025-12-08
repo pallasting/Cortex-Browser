@@ -28,6 +28,10 @@ class NeuroEngineSim {
         };
 
         // Init Topology
+        this.resetTopology();
+    }
+
+    resetTopology() {
         let sIdx = 0;
         for (let i = 0; i < this.config.neuronCount; i++) {
             for (let j = 0; j < this.config.neuronCount; j++) {
@@ -40,6 +44,14 @@ class NeuroEngineSim {
             }
         }
         this.state.synapseCount = sIdx;
+        this.state.generation = 0;
+        this.state.energy = 100;
+        this.state.activations.fill(0);
+    }
+
+    updateConfig(partial: Partial<NeuroConfig>) {
+        this.config = { ...this.config, ...partial };
+        // If density or count changed drastically, we might re-init, but for now we just keep running
     }
 
     step() {
@@ -61,11 +73,17 @@ class NeuroEngineSim {
 
         // Thermodynamic Perturbation
         const mutIdx = Math.floor(Math.random() * this.state.synapseCount);
-        this.state.synapseWeights[mutIdx] += (Math.random() - 0.5) * 0.1;
+        // Perturbation magnitude scales with temperature
+        const noise = (Math.random() - 0.5) * 0.1 * this.config.temperature;
+        this.state.synapseWeights[mutIdx] += noise;
 
         // Cooling
-        this.config.temperature *= this.config.coolingRate;
-        this.state.energy = this.state.energy * 0.99 + Math.random(); // Mock energy drop
+        if (this.config.temperature > 0.01) {
+             this.config.temperature *= this.config.coolingRate;
+        }
+        
+        // Mock energy calculation
+        this.state.energy = this.state.energy * 0.99 + (Math.random() * this.config.temperature); 
         this.state.generation++;
     }
 }
@@ -81,6 +99,29 @@ export interface KernelState {
     viewMode: ViewMode;
     isLiveMode: boolean;
     neuroState: NeuroState;
+    neuroConfig: NeuroConfig;
+}
+
+const STORAGE_KEY = 'CORTEX_KERNEL_V1';
+
+// Helper for safe storage access to prevent "Operation is insecure" errors in sandboxed iframes
+class SafeStorage {
+    static getItem(key: string): string | null {
+        try {
+            return localStorage.getItem(key);
+        } catch (e) {
+            // console.warn('LocalStorage access denied');
+            return null;
+        }
+    }
+
+    static setItem(key: string, value: string) {
+        try {
+            localStorage.setItem(key, value);
+        } catch (e) {
+            // console.warn('LocalStorage access denied');
+        }
+    }
 }
 
 class CortexKernel {
@@ -106,10 +147,59 @@ class CortexKernel {
             systemLogs: [],
             viewMode: ViewMode.WEB,
             isLiveMode: false,
-            neuroState: this.neuroEngine.state
+            neuroState: this.neuroEngine.state,
+            neuroConfig: this.neuroEngine.config
         };
 
         this.addLog('INFO', 'ENGINE', 'Cortex Kernel initialized (Simulation Mode)');
+    }
+
+    // --- Persistence ---
+    saveState() {
+        try {
+            const snapshot = {
+                tabs: this.state.tabs,
+                activeTabId: this.state.activeTabId,
+                dataFrames: this.state.dataFrames,
+                vectorData: this.state.vectorData,
+                neuroConfig: this.state.neuroConfig,
+                // We don't save neuroState binary data in this mock, but we save config
+                systemLogs: this.state.systemLogs.slice(-20) // Keep last 20 logs
+            };
+            SafeStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+            // console.log('Kernel Hibernated to Disk');
+        } catch (e) {
+            console.error('Failed to save state', e);
+        }
+    }
+
+    restoreState() {
+        try {
+            const raw = SafeStorage.getItem(STORAGE_KEY);
+            if (raw) {
+                const snapshot = JSON.parse(raw);
+                this.state = {
+                    ...this.state,
+                    ...snapshot,
+                    // Re-attach the live neuro state object from the engine, as JSON.parse destroys TypedArrays
+                    neuroState: this.neuroEngine.state 
+                };
+                
+                // Hydrate Engine Config
+                if (snapshot.neuroConfig) {
+                    this.neuroEngine.updateConfig(snapshot.neuroConfig);
+                    this.state.neuroConfig = this.neuroEngine.config;
+                }
+
+                this.addLog('INFO', 'SYSTEM', 'Kernel State Restored from Hibernation.');
+                this.notify();
+                return true;
+            }
+        } catch (e) {
+            // console.error('Failed to restore state', e);
+            this.addLog('WARN', 'SYSTEM', 'Corrupted State File or Storage Access Denied. Starting Fresh.');
+        }
+        return false;
     }
 
     // --- Pub/Sub ---
@@ -175,6 +265,7 @@ class CortexKernel {
         
         this.addLog('INFO', 'ENGINE', `Parsed ${newData.rowCount} blocks from "${title}"`);
         this.addLog('INFO', 'ENGINE', `LanceDB: Ingested vector node ${newNodeId.substring(0,8)}`);
+        this.saveState();
         this.notify();
     }
 
@@ -198,11 +289,13 @@ class CortexKernel {
             dataFrames: newDataFrames
         };
         this.addLog('INFO', 'ENGINE', `Tab ${tabId} closed. Memory freed.`);
+        this.saveState();
         this.notify();
     }
 
     setActiveTab(tabId: string) {
         this.state = { ...this.state, activeTabId: tabId };
+        this.saveState();
         this.notify();
     }
 
@@ -211,6 +304,7 @@ class CortexKernel {
         if (mode === ViewMode.NEURO) {
             this.addLog('INFO', 'ENGINE', 'NeuroRust: Physics Engine Attached.');
         }
+        this.saveState();
         this.notify();
     }
 
@@ -282,6 +376,7 @@ class CortexKernel {
                      ...this.state,
                      dataFrames: { ...this.state.dataFrames, [tabId]: newDF }
                  };
+                 this.saveState();
                  this.notify();
              }
         }
@@ -289,8 +384,19 @@ class CortexKernel {
 
     neuroStep() {
         this.neuroEngine.step();
-        // Since NeuroState uses TypedArrays, the reference doesn't change, but data does.
-        // We trigger notify to rerender.
+        this.state = { ...this.state, neuroConfig: { ...this.neuroEngine.config } };
+        this.notify();
+    }
+    
+    updateNeuroConfig(partial: Partial<NeuroConfig>) {
+        this.neuroEngine.updateConfig(partial);
+        this.state = { ...this.state, neuroConfig: { ...this.neuroEngine.config } };
+        // if user resets topology, we might want to log it
+        if (partial.neuronCount !== undefined || partial.synapseDensity !== undefined) {
+             this.neuroEngine.resetTopology();
+             this.addLog('INFO', 'ENGINE', 'NeuroRust: Topology Reset.');
+        }
+        this.saveState();
         this.notify();
     }
 

@@ -1,11 +1,27 @@
+
 import { GoogleGenAI } from "@google/genai";
 
 // NOTE: In a production version of Cortex, this API Key would be managed via user settings 
 // or through the hypothetical "Cortex Cloud" proxy.
 // For this demo, we assume the environment variable is set or prompt the user.
 
+let memoryApiKey: string | null = null;
+
+export const setMemoryApiKey = (key: string) => {
+    memoryApiKey = key;
+}
+
 const getAiClient = () => {
-  const apiKey = process.env.API_KEY || localStorage.getItem("GEMINI_API_KEY");
+  let apiKey = process.env.API_KEY || memoryApiKey;
+  
+  if (!apiKey) {
+      try {
+          apiKey = localStorage.getItem("GEMINI_API_KEY");
+      } catch (e) {
+          // Ignore security errors (sandboxed iframe)
+      }
+  }
+
   if (!apiKey) {
     throw new Error("API_KEY_MISSING");
   }

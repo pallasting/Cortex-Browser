@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatMessage, DataFrame } from '../types';
-import { generatePageInsight, generateAgentThought } from '../services/geminiService';
+import { generatePageInsight, generateAgentThought, setMemoryApiKey } from '../services/geminiService';
 
 interface AiSidebarProps {
   isOpen: boolean;
@@ -75,7 +76,45 @@ const AiSidebar: React.FC<AiSidebarProps> = ({ isOpen, onClose, contextData, onA
         return;
     }
 
-    // 2. INTERACTION AGENT (The "Act" Phase)
+    // 2. PHYSICS AGENT (Bridge to NeuroRust)
+    if (lowerInput.includes('stabilize') || lowerInput.includes('cool') || lowerInput.includes('heat') || lowerInput.includes('entropy') || lowerInput.includes('reset physics')) {
+        
+        try {
+            const thought = await generateAgentThought("Adjusting Thermodynamic Parameters");
+            if(onAction) onAction('AGENT_THOUGHT', thought);
+        } catch (e) {
+            if(onAction) onAction('AGENT_THOUGHT', "Accessing NeuroRust Control Plane...");
+        }
+
+        setTimeout(() => {
+            setIsLoading(false);
+            let configUpdate = {};
+            let msg = "";
+
+            if (lowerInput.includes('stabilize') || lowerInput.includes('cool')) {
+                configUpdate = { temperature: 0.1, coolingRate: 0.95 };
+                msg = "Initiating rapid cooling sequence. Stabilizing network topology.";
+            } else if (lowerInput.includes('heat') || lowerInput.includes('entropy') || lowerInput.includes('chaos')) {
+                configUpdate = { temperature: 2.0, coolingRate: 0.999 };
+                msg = "Injecting thermal noise. Increasing system entropy.";
+            } else if (lowerInput.includes('reset')) {
+                configUpdate = { neuronCount: 50, synapseDensity: 0.2, temperature: 1.0 };
+                msg = "Resetting physics engine to default parameters.";
+            }
+
+            setMessages(prev => [...prev, {
+                id: Date.now().toString(),
+                role: 'model',
+                text: msg,
+                timestamp: Date.now()
+            }]);
+            
+            if (onAction) onAction('PHYSICS_UPDATE', configUpdate);
+        }, 1000);
+        return;
+    }
+
+    // 3. INTERACTION AGENT (The "Act" Phase)
     if (lowerInput.includes('select') || lowerInput.includes('highlight') || lowerInput.includes('upvote') || lowerInput.includes('download') || lowerInput.includes('copy')) {
         
         // Trigger generic thought immediately
@@ -136,7 +175,7 @@ const AiSidebar: React.FC<AiSidebarProps> = ({ isOpen, onClose, contextData, onA
         return;
     }
 
-    // 3. STANDARD LLM QUERY
+    // 4. STANDARD LLM QUERY
     try {
         const dataStr = JSON.stringify(contextData.columns.map(c => ({ name: c.name, data: c.data.slice(0, 10) })));
         
@@ -175,9 +214,15 @@ const AiSidebar: React.FC<AiSidebarProps> = ({ isOpen, onClose, contextData, onA
   };
 
   const saveKey = (key: string) => {
-      localStorage.setItem("GEMINI_API_KEY", key);
+      try {
+        localStorage.setItem("GEMINI_API_KEY", key);
+        alert("Key Saved. Please try asking again.");
+      } catch (e) {
+          // Security Error (iframe)
+          setMemoryApiKey(key);
+          alert("Key stored in Session Memory (LocalStorage restricted). It will be lost on refresh.");
+      }
       setApiKeyMissing(false);
-      alert("Key Saved. Please try asking again.");
   };
 
   const handleWorkflow = (flow: string) => {
@@ -276,14 +321,13 @@ const AiSidebar: React.FC<AiSidebarProps> = ({ isOpen, onClose, contextData, onA
                 className="whitespace-nowrap bg-slate-800 hover:bg-slate-700 text-rust-500 border border-rust-900/50 text-[10px] px-2 py-1 rounded-full transition-colors flex items-center gap-1"
             >
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 22h20L12 2z"/></svg>
-                Agent: Upvote Top 3
+                Upvote Top 3
             </button>
             <button 
-                onClick={() => handleSend("Download tokio config")}
-                className="whitespace-nowrap bg-slate-800 hover:bg-slate-700 text-green-400 border border-green-900/50 text-[10px] px-2 py-1 rounded-full transition-colors flex items-center gap-1"
+                onClick={() => handleSend("Stabilize network")}
+                className="whitespace-nowrap bg-slate-800 hover:bg-slate-700 text-blue-400 border border-blue-900/50 text-[10px] px-2 py-1 rounded-full transition-colors flex items-center gap-1"
             >
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                Agent: Download 'Tokio'
+                Stabilize Physics
             </button>
             <button 
                 onClick={() => handleSend("Highlight Rust related items")}
@@ -311,14 +355,14 @@ const AiSidebar: React.FC<AiSidebarProps> = ({ isOpen, onClose, contextData, onA
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                    placeholder="Instruct Agent (e.g. 'Upvote top 3')..."
+                    placeholder="Instruct Agent (e.g. 'Upvote', 'Cool down')..."
                     className="flex-1 bg-black text-slate-200 border border-cortex-border rounded p-2 text-xs font-mono focus:border-rust-500 outline-none placeholder:text-slate-600"
                     />
                     <button 
                         onClick={() => handleSend()}
                         className="bg-rust-600 hover:bg-rust-500 text-white px-3 rounded transition-colors"
                     >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m5 12 7-7 7 7 7 7 7 7"/><path d="M12 19V5"/></svg>
                     </button>
                 </div>
             )}

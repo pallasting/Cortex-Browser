@@ -14,6 +14,9 @@ export const ipc = {
             case 'get_state':
                 return kernel.getState();
             
+            case 'restore_state':
+                return kernel.restoreState();
+
             case 'navigate':
                 kernel.navigate(payload.url, payload.title);
                 return;
@@ -48,6 +51,10 @@ export const ipc = {
             
             case 'neuro_step':
                 kernel.neuroStep();
+                return;
+
+            case 'update_neuro_config':
+                kernel.updateNeuroConfig(payload.config);
                 return;
 
             default:
