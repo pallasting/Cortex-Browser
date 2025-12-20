@@ -1,0 +1,35 @@
+[package]
+name = "cortex-browser"
+version = "0.1.0"
+description = "A modern, intelligent browser with AI-powered features"
+authors = ["Cortex Team"]
+license = "MIT"
+repository = ""
+edition = "2021"
+rust-version = "1.70"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.0", features = [] }
+tauri-plugin-shell = "2.0"
+thiserror = "1.0"
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+log = "0.4"
+env_logger = "0.11"
+anyhow = "1.0"
+
+[features]
+# Include the default features for Tauri
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[lib]
+name = "cortex_browser_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
